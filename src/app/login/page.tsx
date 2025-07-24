@@ -1,14 +1,64 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const handleMagicLink = async () => {
+      const code = searchParams.get('code')
+      console.log('[Login] Loaded with code:', code)
+
+      if (code) {
+        console.log('[Login] Attempting to exchange code for session...')
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+        if (error) {
+          console.error('[Login] Session exchange failed:', error.message)
+        } else {
+          console.log('[Login] Session exchange successful. Redirecting to /dashboard...')
+          setTimeout(() => {
+            router.replace('/dashboard')
+          }, 50) // slight delay to ensure cookie is set
+        }
+      } else {
+        // Check for existing session (if user comes to /login manually)
+        console.log('[Login] No code in URL. Checking if already logged in...')
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (session) {
+          console.log('[Login] Session exists. Redirecting to /dashboard...')
+          router.replace('/dashboard')
+        } else {
+          console.log('[Login] No session found. Staying on login page.')
+        }
+      }
+    }
+
+    handleMagicLink()
+  }, [searchParams, router])
 
   const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOtp({ email })
-    if (!error) setSent(true)
+    console.log('[Login] Sending magic link to:', email)
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    })
+
+    if (error) {
+      console.error('[Login] Failed to send magic link:', error.message)
+    } else {
+      console.log('[Login] Magic link sent!')
+      setSent(true)
+    }
   }
 
   return (
